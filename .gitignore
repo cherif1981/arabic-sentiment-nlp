@@ -1,46 +1,71 @@
-# Python
+# ============ Python ============
 __pycache__/
 *.py[cod]
 *$py.class
 *.so
 .Python
 build/
+develop-eggs/
 dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
 *.egg-info/
+.installed.cfg
+*.egg
 
-# Virtual Environment
+# ============ Virtual Environments ============
 venv/
 env/
 ENV/
 .venv/
+.conda/
 
-# Jupyter
+# ============ Jupyter ============
 .ipynb_checkpoints/
 *.ipynb_checkpoints
 
-# Models (كبيرة الحجم - لا ترفعها)
+# ============ Models (لا ترفع الملفات الكبيرة) ============
 models/*.pkl
+models/*.joblib
 models/*.h5
 models/*.bin
+models/*.pt
+models/*.safetensors
 
-# Data (كبيرة أو خاصة)
+# ============ Data (لا ترفع البيانات) ============
 data/raw/*.csv
+data/raw/*.xlsx
+data/raw/*.json
 data/processed/*.csv
+data/processed/*.xlsx
+data/processed/*.json
 !data/raw/.gitkeep
 !data/processed/.gitkeep
 
-# IDE
+# ============ IDE ============
 .vscode/
 .idea/
 *.swp
 *.swo
+*~
 
-# OS
+# ============ OS ============
 .DS_Store
 Thumbs.db
+desktop.ini
 
-# Streamlit
+# ============ Streamlit ============
 .streamlit/secrets.toml
 
-# Logs
+# ============ Logs & Coverage ============
 *.log
+.pytest_cache/
+.coverage
+htmlcov/
