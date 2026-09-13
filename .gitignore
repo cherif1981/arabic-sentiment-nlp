@@ -1,64 +1,35 @@
-# ============ Python ============
-__pycache__/
-*.py[cod]
-*$py.class
-*.so
-.Python
-build/
-dist/
-*.egg-info/
+# Git الداخلية
+**/.git/
 
-# ============ Virtual Environments ============
-venv/
-env/
-ENV/
-.venv/
-
-# ============ Jupyter ============
-.ipynb_checkpoints/
-
-# ============ Models ============
-models/*.pkl
-models/*.joblib
-models/*.h5
-models/*.bin
-models/arabert/
-!models/.gitkeep
-
-# ============ Data ============
+# بيانات ضخمة (مصادر خارجية)
+data/raw/sources/
 data/raw/*.csv
 data/processed/*.csv
-data/raw/*.xlsx
-data/processed/*.xlsx
 !data/raw/.gitkeep
 !data/processed/.gitkeep
 
-# ============ Reports (الصور والملفات المؤقتة) ============
-reports/figures/*.png
-reports/*.html
-htmlcov/
-.coverage
+# Python
+__pycache__/
+*.py[cod]
 .pytest_cache/
+.mypy_cache/
 
-# ============ IDE ============
+# بيئات افتراضية
+venv/
+.venv/
+
+# نماذج كبيرة
+models/*.pkl
+models/*.bin
+models/*.pt
+models/arabert/
+
+# VS Code
 .vscode/
-.idea/
-*.swp
-*.swo
-*~
 
-# ============ OS ============
-.DS_Store
-Thumbs.db
-desktop.ini
-
-# ============ Streamlit ============
-.streamlit/secrets.toml
-
-# ============ Logs ============
-*.log
-logs/
-
-# ============ Environment ============
-.env
-.env.local
+# مؤقتة
+tmp_test/
+*.tmp
+manual_*.txt
+pytest_*.txt
+debug_*.txt
