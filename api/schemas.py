@@ -123,3 +123,44 @@ class ErrorResponse(BaseModel):
     error: str
     detail: Optional[str] = None
     status_code: int
+
+# ============================================================
+# Multi-Model Schemas
+# ============================================================
+class ModelInfo(BaseModel):
+    """معلومات نموذج واحد."""
+    key: str
+    name: str
+    description: str
+    accuracy: str
+    speed: str
+    available: bool
+    default: bool
+    loaded: bool
+
+
+class ModelsListResponse(BaseModel):
+    """قائمة النماذج المتاحة."""
+    models: List[ModelInfo]
+    default_model: str
+    count: int
+
+
+class MultiModelPredictRequest(BaseModel):
+    """طلب تحليل مع اختيار النموذج."""
+    text: str = Field(..., min_length=1, max_length=5000)
+    model_name: Optional[str] = Field(
+        default=None,
+        description="اسم النموذج (اختياري، الافتراضي: optimized)"
+    )
+
+
+class MetricsResponse(BaseModel):
+    """إحصائيات الـ API."""
+    uptime_seconds: float
+    total_requests: int
+    total_predictions: int
+    loaded_models: List[str]
+    available_models: int
+    average_latency_ms: float
+    requests_per_model: dict

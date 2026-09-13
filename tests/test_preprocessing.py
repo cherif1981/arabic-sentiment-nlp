@@ -1,271 +1,480 @@
 """
-اختبارات preprocessing.py
-==========================
-يغطي:
-- الدوال الأساسية
-- الوضعين (classic, light)
-- الحالات الحدّية
-"""
-import pytest
-import sys
-import os
+اختبارات وحدة لـ preprocessing.py
+====================================
+تركيز خاص على:
+- اللهجة الجزائرية (بصح، ماشي، واش، هايلة...)
+- الكلمات البذيئة (يجب ألا تُمسح)
+- الكلمات الفرنسية (الدارجة مختلطة)
+- النصوص المختلطة (مدح + ذم)
+- تجنب مشاكل ترميز Windows (لا طباعة عربية في رسائل الفشل)
 
-CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
-sys.path.insert(0, os.path.join(os.path.dirname(CURRENT_DIR), "src"))
+تشغيل:
+    pytest tests/test_preprocessing.py -v
+    pytest tests/test_preprocessing.py -v --basetemp=tmp_test
+"""
+import os
+import sys
+import pytest
+
+PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+sys.path.insert(0, os.path.join(PROJECT_ROOT, "src"))
 
 from preprocessing import (
-    preprocess,
-    remove_urls, remove_emails, remove_mentions, remove_hashtags,
-    remove_emojis, remove_tashkeel, remove_tatweel,
-    normalize_repeated_chars, normalize_arabic, normalize_unicode,
-    remove_punctuation, remove_digits, remove_english,
-    remove_stopwords, stem_arabic, clean_whitespace,
+    clean_text,
+    remove_diacritics,
+    remove_elongation,
+    normalize_letters,
+    normalize_digits,
+    remove_urls_mentions,
+    normalize_emoji,
+    normalize_punctuation,
 )
 
 
 # ============================================================
-# 1. الدوال الأساسية
+# أدوات مساعدة للاختبار (ASCII-safe)
 # ============================================================
-class TestBasicCleaners:
-    """اختبارات دوال التنظيف الفردية."""
+def write_debug(tmp_path, name, **kwargs):
+    """يكتب تفاصيل الاختبار في ملف UTF-8 (لتجنب مشاكل الطرفية)."""
+    path = tmp_path / f"{name}.txt"
+    lines = []
+    for k, v in kwargs.items():
+        if isinstance(v, str):
+            lines.append(f"{k}: {v}")
+            lines.append(f"{k}_hex: {v.encode('utf-8').hex()}")
+        else:
+            lines.append(f"{k}: {v}")
+    path.write_text("\n".join(lines), encoding="utf-8")
+    return path
 
-    def test_remove_urls(self):
-        assert "http" not in remove_urls("زيارة https://example.com")
-        assert "www" not in remove_urls("اذهب إلى www.test.com")
-        assert remove_urls("نص بدون رابط") == "نص بدون رابط"
 
-    def test_remove_emails(self):
-        assert "@" not in remove_emails("تواصل: test@mail.com")
+def ascii_safe(s):
+    """يحوّل النص إلى تمثيل ASCII آمن (لرسائل الفشل)."""
+    return s.encode("unicode_escape").decode("ascii")
 
-    def test_remove_mentions(self):
-        assert "@" not in remove_mentions("@ahmed مرحبا")
-        assert "ahmed" not in remove_mentions("@ahmed مرحبا")
 
-    def test_remove_hashtags_keeps_word(self):
-        result = remove_hashtags("#رائع منتج", keep_word=True)
+# ============================================================
+# 1) التطويل (Elongation)
+# ============================================================
+class TestElongation:
+    def test_three_repeats_collapsed(self):
+        assert remove_elongation("هاييييلة") == "هايلة"
+
+    def test_two_repeats_kept(self):
+        assert remove_elongation("مرحباا") == "مرحباا"
+
+    def test_waw_repeats(self):
+        assert remove_elongation("جمييييل") == "جميل"
+
+    def test_many_repeats(self):
+        assert remove_elongation("راااااااائع") == "رائع"
+
+    def test_no_repeats(self):
+        assert remove_elongation("مرحبا") == "مرحبا"
+
+    def test_mixed_repeats(self):
+        result = remove_elongation("هااااايل بزاااااف")
+        assert result == "هايل بزاف"
+
+
+# ============================================================
+# 2) التشكيل (Diacritics)
+# ============================================================
+class TestDiacritics:
+    def test_fatha_damma_kasra(self):
+        assert remove_diacritics("مَرْحَبًا") == "مرحبا"
+
+    def test_shadda(self):
+        assert remove_diacritics("مُحَمَّد") == "محمد"
+
+    def test_tatweel(self):
+        assert remove_diacritics("مـــن") == "من"
+
+    def test_sukun(self):
+        assert remove_diacritics("مَكْتَبْ") == "مكتب"
+
+    def test_no_diacritics(self):
+        assert remove_diacritics("مرحبا") == "مرحبا"
+
+    def test_full_sentence(self):
+        assert remove_diacritics("مَرْحَبًا بِكُمْ فِي مُنْتَدَانَا") == "مرحبا بكم في منتدانا"
+
+
+# ============================================================
+# 3) توحيد الأحرف (حساس للدارجة)
+# ============================================================
+class TestLettersNormalization:
+    def test_alef_variants(self):
+        assert normalize_letters("أحمد") == "احمد"
+        assert normalize_letters("إبراهيم") == "ابراهيم"
+        assert normalize_letters("آمنة") == "امنه"
+
+    def test_yaa(self):
+        assert normalize_letters("على") == "علي"
+        assert normalize_letters("مصطفى") == "مصطفي"
+
+    def test_taa_marbuta(self):
+        assert normalize_letters("مدرسة") == "مدرسه"
+
+    def test_algerian_letters_guaf(self):
+        # ڨ (قاف جزائرية) → ق
+        assert normalize_letters("ڨاع") == "قاع"
+
+    def test_algerian_letters_veh(self):
+        # ڤ → ف
+        assert normalize_letters("ڤرن") == "فرن"
+
+    def test_algerian_letters_gaf(self):
+        # گ → ك
+        assert normalize_letters("گاع") == "كاع"
+
+    def test_no_change(self):
+        assert normalize_letters("مرحبا") == "مرحبا"
+
+
+# ============================================================
+# 4) الأرقام
+# ============================================================
+class TestDigits:
+    def test_arabic_digits(self):
+        assert normalize_digits("١٢٣") == "123"
+
+    def test_mixed_digits(self):
+        assert normalize_digits("١2٣") == "123"
+
+    def test_no_digits(self):
+        assert normalize_digits("مرحبا") == "مرحبا"
+
+    def test_full_number(self):
+        assert normalize_digits("٠١٢٣٤٥٦٧٨٩") == "0123456789"
+
+
+# ============================================================
+# 5) الروابط والإشارات
+# ============================================================
+class TestUrlsMentions:
+    def test_url_removed(self):
+        result = remove_urls_mentions("شوف هذا https://example.com رائع")
+        assert "https" not in result
+        assert "example.com" not in result
         assert "رائع" in result
+
+    def test_www_removed(self):
+        result = remove_urls_mentions("زيارة www.example.com للتفاصيل")
+        assert "www" not in result
+        assert "للتفاصيل" in result
+
+    def test_mention_removed(self):
+        result = remove_urls_mentions("@user مرحبا")
+        assert "@user" not in result
+        assert "مرحبا" in result
+
+    def test_hashtag_kept_as_word(self):
+        result = remove_urls_mentions("هذا #رائع جدا")
         assert "#" not in result
+        assert "رائع" in result
 
-    def test_remove_hashtags_removes_word(self):
-        result = remove_hashtags("#رائع منتج", keep_word=False)
-        assert "رائع" not in result
+    def test_multiple(self):
+        result = remove_urls_mentions("@a @b https://x.com #test كلمة")
+        assert "@a" not in result
+        assert "@b" not in result
+        assert "https" not in result
+        assert "test" in result
+        assert "كلمة" in result
 
-    def test_remove_emojis(self):
-        result = remove_emojis("رائع 😍 جداً 🎉")
+
+# ============================================================
+# 6) الإيموجي
+# ============================================================
+class TestEmoji:
+    def test_positive_emoji_to_word(self):
+        result = normalize_emoji("منتج ممتاز 😍")
+        assert "حب" in result
+        assert "😍" not in result
+
+    def test_negative_emoji_to_word(self):
+        result = normalize_emoji("خدمة سيئة 😡")
+        assert "غاضب" in result
+
+    def test_emoji_removed_mode(self):
+        result = normalize_emoji("منتج ممتاز 😍", keep_as_words=False)
+        assert "😍" not in result
+        assert "ممتاز" in result
+
+    def test_multiple_emoji(self):
+        result = normalize_emoji("رائع 😍🎉")
         assert "😍" not in result
         assert "🎉" not in result
 
-    def test_remove_tashkeel(self):
-        assert remove_tashkeel("مَرْحَبًا") == "مرحبا"
-        assert remove_tashkeel("كَتَبَ") == "كتب"
 
-    def test_remove_tatweel(self):
-        assert remove_tatweel("مـــرحبا") == "مرحبا"
+# ============================================================
+# 7) الترقيم
+# ============================================================
+class TestPunctuation:
+    def test_repeated_exclamation(self):
+        assert normalize_punctuation("رائع!!!") == "رائع!"
 
-    def test_normalize_repeated_chars(self):
-        assert normalize_repeated_chars("راااائع") == "رائع"
-        assert normalize_repeated_chars("جمييييل") == "جميل"
-        assert normalize_repeated_chars("كتااااااااب") == "كتاب"
-        # كلمتان بحرفين مكررين فقط لا تُعدّلان
-        assert normalize_repeated_chars("رد") == "رد"
+    def test_repeated_question(self):
+        assert normalize_punctuation("لماذا؟؟؟") == "لماذا؟"
 
-    def test_normalize_arabic(self):
-        assert normalize_arabic("إسلام") == "اسلام"
-        assert normalize_arabic("أحمد") == "احمد"
-        assert normalize_arabic("آمن") == "امن"
-        assert normalize_arabic("مصطفى") == "مصطفي"
-        assert normalize_arabic("مدرسة") == "مدرسه"
+    def test_multiple_spaces(self):
+        assert normalize_punctuation("كلمة    كلمة") == "كلمة كلمة"
 
-    def test_remove_punctuation(self):
-        assert "!" not in remove_punctuation("مرحبا!")
-        assert "؟" not in remove_punctuation("كيف حالك؟")
+    def test_leading_trailing_spaces(self):
+        assert normalize_punctuation("  مرحبا  ") == "مرحبا"
 
-    def test_remove_digits(self):
-        assert "123" not in remove_digits("مرحبا123")
-        assert "٢٠٢٤" not in remove_digits("سنة ٢٠٢٤")
-
-    def test_remove_english(self):
-        result = remove_english("مرحبا hello")
-        assert "hello" not in result
-        assert "مرحبا" in result
-
-    def test_remove_stopwords(self):
-        result = remove_stopwords("هذا المنتج رائع")
-        assert "هذا" not in result
-        assert "المنتج" in result
-
-    def test_stem_arabic(self):
-        result = stem_arabic("الكتاب جميل")
-        # ISRI stemmer يُرجع جذر الكلمة
-        assert len(result.split()) == 2
-
-    def test_clean_whitespace(self):
-        assert clean_whitespace("مرحبا    بالعالم") == "مرحبا بالعالم"
-        assert clean_whitespace("  نص  ") == "نص"
+    def test_tabs_newlines(self):
+        assert normalize_punctuation("كلمة\t\nكلمة") == "كلمة كلمة"
 
 
 # ============================================================
-# 2. الوضعان
+# 8) الدالة الرئيسية (clean_text) — الحالات العامة
 # ============================================================
-class TestPreprocessModes:
-    """اختبارات وضعي المعالجة."""
-
-    def test_light_keeps_tashkeel(self):
-        result = preprocess("مَرْحَبًا", mode="light")
-        assert "َ" in result  # الفتحة باقية
-
-    def test_classic_removes_tashkeel(self):
-        result = preprocess("مَرْحَبًا", mode="classic")
-        assert "َ" not in result
-
-    def test_light_keeps_stopwords(self):
-        result = preprocess("هذا المنتج رائع", mode="light")
-        assert "هذا" in result
-
-    def test_classic_removes_stopwords(self):
-        result = preprocess("هذا المنتج رائع", mode="classic")
-        assert "هذا" not in result
-
-    def test_light_keeps_digits(self):
-        result = preprocess("المنتج 10/10", mode="light")
-        assert "10" in result
-
-    def test_classic_removes_digits(self):
-        result = preprocess("المنتج 10/10", mode="classic")
-        assert "10" not in result
-
-    def test_classic_stem(self):
-        result = preprocess("الكتاب جميل", mode="classic", do_stem=True)
-        assert len(result.split()) == 2
-
-    def test_invalid_mode_raises(self):
-        with pytest.raises(ValueError, match="غير مدعوم"):
-            preprocess("نص", mode="invalid")
-
-
-# ============================================================
-# 3. الحالات الحدّية
-# ============================================================
-class TestEdgeCases:
-    """اختبارات الحالات الحدّية."""
-
+class TestCleanTextGeneral:
     def test_empty_string(self):
-        assert preprocess("") == ""
-        assert preprocess("", mode="light") == ""
-        assert preprocess("", mode="classic") == ""
-
-    def test_whitespace_only(self):
-        assert preprocess("     ") == ""
-        assert preprocess("\n\n\t") == ""
+        assert clean_text("") == ""
 
     def test_none_input(self):
-        assert preprocess(None) == ""
-        assert preprocess(None, mode="light") == ""
+        assert clean_text(None) == ""
 
-    def test_numbers_only(self):
-        result = preprocess("123 456", mode="classic")
-        assert result.strip() == ""
+    def test_only_spaces(self):
+        assert clean_text("     ") == ""
 
-    def test_punctuation_only(self):
-        result = preprocess("!@#$%^&*()", mode="classic")
-        assert result.strip() == ""
+    def test_simple_arabic(self):
+        assert clean_text("مرحبا") == "مرحبا"
 
-    def test_emoji_only(self):
-        result = preprocess("😍🎉😊", mode="classic")
-        assert result.strip() == ""
+    def test_with_tashkeel(self, tmp_path):
+        result = clean_text("مَرْحَبًا")
+        log = write_debug(tmp_path, "tashkeel", input="مَرْحَبًا", output=result)
+        assert "مرحبا" in result or result == "مرحبا", f"See {log}"
 
-    def test_very_long_text(self):
-        long_text = "هذا المنتج ممتاز " * 1000
-        result = preprocess(long_text, mode="classic")
+    def test_with_url(self):
+        result = clean_text("زيارة https://example.com للتفاصيل")
+        assert "https" not in result
+        assert "example.com" not in result
+        assert "للتفاصيل" in result
+
+    def test_with_mention(self):
+        result = clean_text("@ahmed شكراً لك")
+        assert "@ahmed" not in result
+        assert "شكر" in result or "شكرا" in result
+
+    def test_with_hashtag(self):
+        result = clean_text("#رائع هذا المنتج")
+        assert "#" not in result
+
+    def test_with_numbers(self):
+        result = clean_text("المنتج 10/10 ممتاز")
+        assert "ممتاز" in result
+
+    def test_mixed_arabic_english(self):
+        result = clean_text("منتج جيد product quality 100/100")
+        assert "منتج" in result or "منتج" in result
+        assert "quality" in result or "product" in result
+
+    def test_long_text(self):
+        text = "هذا المنتج " * 200
+        result = clean_text(text)
         assert len(result) > 0
-        # يجب أن يكون أقصر من الأصل (إزالة التكرار)
-        assert len(result) < len(long_text)
-
-    def test_arabic_with_english(self):
-        result = preprocess("منتج product رائع", mode="classic")
-        assert "product" not in result
-        assert "منتج" in result
-
-    def test_mixed_everything(self):
-        text = "😍 مرحباً!!! @ahmed https://test.com #رائع 123"
-        result = preprocess(text, mode="classic")
-        assert "http" not in result
-        assert "@" not in result
-        assert "😍" not in result
-        assert "123" not in result
 
 
 # ============================================================
-# 4. Integration
+# 9) الدالة الرئيسية — الدارجة الجزائرية (الأهم)
 # ============================================================
-class TestFullPipeline:
-    """اختبارات خط الأنابيب الكامل."""
+class TestAlgerianDialect:
+    """كلمات جزائرية حاسمة يجب ألا تُمسّ."""
 
-    def test_real_tweet_classic(self):
-        tweet = "رااااائع 😍 @user https://example.com #رائع!!! ١٠/١٠"
-        result = preprocess(tweet, mode="classic")
+    @pytest.mark.parametrize("word", [
+        "بصح", "ماشي", "واش", "راه", "راك", "كاش", "شوية",
+        "بزاف", "هايل", "هايلة", "زوالي", "طاكسي", "صباط",
+        "كوزينة", "بيتزا", "طوموبيل", "قهوة", "خبز",
+    ])
+    def test_dialect_words_survive(self, word, tmp_path):
+        """كل كلمة دارجة يجب أن تنجو من التنظيف."""
+        result = clean_text(word)
+        log = write_debug(tmp_path, f"word_{len(word)}",
+                          input=word, output=result)
+        assert len(result) >= 2, (
+            f"FAIL: word disappeared. "
+            f"in_len={len(word)}, out_len={len(result)}. See {log}"
+        )
 
-        # التحقق من إزالة العناصر
-        assert "http" not in result
-        assert "@" not in result
-        assert "😍" not in result
-        assert "راااائع" not in result
-        assert "١٠" not in result
+    def test_no_stemming_hayla(self, tmp_path):
+        """'هايلة' يجب ألا تُجذّر إلى 'هال' أو ما شابه."""
+        result = clean_text("هايلة")
+        log = write_debug(tmp_path, "hayla", input="هايلة", output=result)
+        assert result == "هايله", (
+            f"FAIL: unexpected output. "
+            f"out_len={len(result)}. See {log}"
+        )
 
-        # التحقق من وجود كلمة بعد التطبيع
-        # normalize_arabic يحوّل ئ → ي
-        # لذا نتوقع "رايع" (أو "رائع" لو لم يُطبّع)
-        words = result.split()
-        assert len(words) >= 1, f"النتيجة فارغة: {result!r}"
+    def test_besh_survives(self, tmp_path):
+        result = clean_text("راه مليح بصح غالي")
+        log = write_debug(tmp_path, "besh",
+                          input="راه مليح بصح غالي", output=result)
+        assert "بصح" in result, (
+            f"FAIL: 'besh' missing. out_len={len(result)}. See {log}"
+        )
 
-        # نتأكد أن النتيجة تحتوي على "راي" (بداية كلمة "رايع" بعد التطبيع)
-        # أو "رائ" (بداية "رائع" بدون تطبيع)
-        assert any(w.startswith(("راي", "رائ")) for w in words), \
-            f"لا توجد كلمة تبدأ بـ 'راي' أو 'رائ' في: {words}"
+    def test_negation_ma(self, tmp_path):
+        result = clean_text("ما عجبنيش")
+        log = write_debug(tmp_path, "negation_ma",
+                          input="ما عجبنيش", output=result)
+        assert "ما" in result, (
+            f"FAIL: 'ma' missing. out_len={len(result)}. See {log}"
+        )
 
-    def test_real_tweet_light(self):
-        tweet = "رااااائع 😍 @user https://example.com #رائع!!!"
-        result = preprocess(tweet, mode="light")
-        assert "http" not in result
-        assert "@" not in result
-        assert "😍" not in result
-        assert "رائع" in result  # التكرار تم توحيده (في الوضعين)
-
-    def test_arabic_normalization_classic(self):
-        result = preprocess("إلى المدرسة", mode="classic")
-        assert "إ" not in result
-        assert "ة" not in result
-
-    def test_unicode_normalization(self):
-        # Zero-width space
-        text = "مر\u200bحبا"
-        result = preprocess(text, mode="light")
-        assert "\u200b" not in result
+    def test_negation_machi(self, tmp_path):
+        result = clean_text("هذا ماشي مليح")
+        log = write_debug(tmp_path, "negation_machi",
+                          input="هذا ماشي مليح", output=result)
+        assert "ماشي" in result, (
+            f"FAIL: 'machi' missing. out_len={len(result)}. See {log}"
+        )
 
 
 # ============================================================
-# 5. Parametrized Tests
+# 10) الدالة الرئيسية — حالات حساسة
 # ============================================================
-@pytest.mark.parametrize("text,expected_contains", [
-    ("راااااااااائع", "رائع"),
-    ("جميييييييييل", "جميل"),
-    ("كتاااااااااااااب", "كتاب"),
-])
-def test_repeated_chars_parametrized(text, expected_contains):
-    """اختبار حدود تكرار الحروف."""
-    result = normalize_repeated_chars(text)
-    assert expected_contains in result
+class TestCleanTextSensitive:
+    def test_algerian_hayla_with_elongation(self, tmp_path):
+        """'هاييييلة' → 'هايلة' (بلا تجذير)."""
+        text = "هاييييلة بزاف هذا المنتج"
+        result = clean_text(text)
+        log = write_debug(tmp_path, "hayla_elong",
+                          input=text, output=result)
+
+        has_hayla = "هايلة" in result
+        has_elongated = "هاييييلة" in result
+
+        assert has_hayla, (
+            f"FAIL: 'hayla' not found. "
+            f"in_len={len(text)}, out_len={len(result)}. See {log}"
+        )
+        assert not has_elongated, (
+            f"FAIL: elongated form still present. See {log}"
+        )
+
+    def test_mixed_sentiment(self, tmp_path):
+        """نص مختلط: مدح + ذم — يجب أن تبقى كل الكلمات."""
+        text = "المنتج ممتاز بصح الخدمة سيئة"
+        result = clean_text(text)
+        log = write_debug(tmp_path, "mixed",
+                          input=text, output=result)
+
+        has_mumtaz = "ممتاز" in result
+        has_besh = "بصح" in result
+        has_sayia = ("سيئة" in result) or ("سيئه" in result)
+
+        assert has_mumtaz, f"FAIL: 'mumtaz' missing. See {log}"
+        assert has_besh, f"FAIL: 'besh' missing. See {log}"
+        assert has_sayia, f"FAIL: 'sayia' missing. See {log}"
+
+    def test_insult_not_removed(self, tmp_path):
+        """الكلمات البذيئة يجب أن تبقى (للتصنيف السلبي)."""
+        text = "قحبة"
+        result = clean_text(text)
+        log = write_debug(tmp_path, "insult", input=text, output=result)
+
+        assert len(result) >= 2, (
+            f"FAIL: insult removed. out_len={len(result)}. See {log}"
+        )
+        assert "قح" in result, (
+            f"FAIL: expected 'qh' root. See {log}"
+        )
+
+    def test_french_kept(self, tmp_path):
+        """الدارجة الجزائرية مختلطة بالفرنسية."""
+        text = "c'est magnifique wallah"
+        result = clean_text(text)
+        log = write_debug(tmp_path, "french", input=text, output=result)
+
+        assert "magnifique" in result or "magnifique" in result.replace("'", ""), (
+            f"FAIL: french word removed. See {log}"
+        )
+
+    def test_religious_positive(self, tmp_path):
+        """'الحمد لله' نص ديني إيجابي."""
+        text = "الحمد لله"
+        result = clean_text(text)
+        log = write_debug(tmp_path, "religious", input=text, output=result)
+
+        assert "الحمد" in result, (
+            f"FAIL: 'alhamd' missing. See {log}"
+        )
+
+    def test_all_together(self, tmp_path):
+        """نص معقد: تطويل + تشكيل + إيموجي + رابط + فرنسي."""
+        text = "هاااااايل 😍 شوف https://x.com @user c'est super!!!"
+        result = clean_text(text)
+        log = write_debug(tmp_path, "complex", input=text, output=result)
+
+        assert "هايل" in result, f"FAIL: 'hayel' missing. See {log}"
+        assert "https" not in result, f"FAIL: url not removed. See {log}"
+        assert "@user" not in result, f"FAIL: mention not removed. See {log}"
+        assert "!!!" not in result, f"FAIL: punctuation not collapsed. See {log}"
+
+    def test_emoji_to_word(self, tmp_path):
+        text = "الخدمة سيئة جداً 😡"
+        result = clean_text(text)
+        log = write_debug(tmp_path, "emoji_neg", input=text, output=result)
+
+        assert ("غاضب" in result) or ("😡" not in result), (
+            f"FAIL: emoji not processed. See {log}"
+        )
 
 
-@pytest.mark.parametrize("text", [
-    "",
-    "   ",
-    None,
-    "!@#$",
-    "😍😍😍",
-    "123",
-])
-def test_empty_after_classic(text):
-    """نصوص تُصبح فارغة بعد الوضع الكلاسيكي."""
-    result = preprocess(text, mode="classic")
-    assert result.strip() == ""
+# ============================================================
+# 11) الأداء والثبات
+# ============================================================
+class TestPerformance:
+    def test_long_text(self):
+        text = "هايلة بزاف " * 1000
+        result = clean_text(text)
+        assert len(result) > 0
+
+    def test_unicode_mixed(self):
+        text = "عربي English 123 ١٢٣ 😀🎉"
+        result = clean_text(text)
+        assert len(result) > 0
+
+    def test_idempotent(self):
+        """تشغيل clean_text مرتين يعطي نفس النتيجة."""
+        text = "هاييييلة بزاف هذا المنتج 😍"
+        once = clean_text(text)
+        twice = clean_text(once)
+        assert once == twice, (
+            f"FAIL: not idempotent. "
+            f"once_len={len(once)}, twice_len={len(twice)}"
+        )
+
+
+# ============================================================
+# 12) اختبارات المعالجة الكاملة (End-to-End)
+# ============================================================
+class TestEndToEnd:
+    def test_full_pipeline_positive(self, tmp_path):
+        text = "هذا المنتج ممتاز جداً 😍 https://x.com"
+        result = clean_text(text)
+        log = write_debug(tmp_path, "e2e_pos", input=text, output=result)
+
+        assert "ممتاز" in result, f"See {log}"
+        assert "https" not in result, f"See {log}"
+        assert "😍" not in result, f"See {log}"
+
+    def test_full_pipeline_negative(self, tmp_path):
+        text = "الخدمة سيئة للغاية 😡 @support"
+        result = clean_text(text)
+        log = write_debug(tmp_path, "e2e_neg", input=text, output=result)
+
+        assert "سيئ" in result, f"See {log}"
+        assert "@support" not in result, f"See {log}"
+
+    def test_full_pipeline_dialect(self, tmp_path):
+        text = "هاييييلة بزاف! بصح غالية شوية 😅"
+        result = clean_text(text)
+        log = write_debug(tmp_path, "e2e_dz", input=text, output=result)
+
+        assert "هايلة" in result, f"See {log}"
+        assert "بزاف" in result, f"See {log}"
+        assert "بصح" in result, f"See {log}" 

@@ -5,49 +5,40 @@ __pycache__/
 *.so
 .Python
 build/
-develop-eggs/
 dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
 *.egg-info/
-.installed.cfg
-*.egg
 
 # ============ Virtual Environments ============
 venv/
 env/
 ENV/
 .venv/
-.conda/
 
 # ============ Jupyter ============
 .ipynb_checkpoints/
-*.ipynb_checkpoints
 
-# ============ Models (لا ترفع الملفات الكبيرة) ============
+# ============ Models ============
 models/*.pkl
 models/*.joblib
 models/*.h5
 models/*.bin
-models/*.pt
-models/*.safetensors
+models/arabert/
+!models/.gitkeep
 
-# ============ Data (لا ترفع البيانات) ============
+# ============ Data ============
 data/raw/*.csv
-data/raw/*.xlsx
-data/raw/*.json
 data/processed/*.csv
+data/raw/*.xlsx
 data/processed/*.xlsx
-data/processed/*.json
 !data/raw/.gitkeep
 !data/processed/.gitkeep
+
+# ============ Reports (الصور والملفات المؤقتة) ============
+reports/figures/*.png
+reports/*.html
+htmlcov/
+.coverage
+.pytest_cache/
 
 # ============ IDE ============
 .vscode/
@@ -64,8 +55,10 @@ desktop.ini
 # ============ Streamlit ============
 .streamlit/secrets.toml
 
-# ============ Logs & Coverage ============
+# ============ Logs ============
 *.log
-.pytest_cache/
-.coverage
-htmlcov/
+logs/
+
+# ============ Environment ============
+.env
+.env.local

@@ -1,0 +1,49 @@
+{
+  "best_search": "Grid Search",
+  "best_score": 0.482546990906124,
+  "best_params": {
+    "clf__C": 1.0,
+    "tfidf__max_features": 3000,
+    "tfidf__ngram_range": [
+      1,
+      1
+    ]
+  },
+  "comparison": [
+    {
+      "name": "Baseline (1-gram, 5K)",
+      "accuracy": 0.5833333333333334,
+      "f1": 0.5939393939393939,
+      "train_time": 0.013000726699829102,
+      "n_features": 127
+    },
+    {
+      "name": "Bi-grams (10K)",
+      "accuracy": 0.5833333333333334,
+      "f1": 0.5939393939393939,
+      "train_time": 0.014000892639160156,
+      "n_features": 245
+    },
+    {
+      "name": "Strong Reg (C=0.1)",
+      "accuracy": 0.5833333333333334,
+      "f1": 0.5939393939393939,
+      "train_time": 0.009000778198242188,
+      "n_features": 245
+    },
+    {
+      "name": "Weak Reg (C=10)",
+      "accuracy": 0.5,
+      "f1": 0.514814814814815,
+      "train_time": 0.019001007080078125,
+      "n_features": 245
+    },
+    {
+      "name": "Tri-grams (20K)",
+      "accuracy": 0.16666666666666666,
+      "f1": 0.08333333333333333,
+      "train_time": 0.01000070571899414,
+      "n_features": 22
+    }
+  ]
+}

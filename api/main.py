@@ -1,13 +1,9 @@
 """
-FastAPI Application — Arabic Sentiment Analyzer
-================================================
-التشغيل:
-    uvicorn api.main:app --reload
+FastAPI Application - Arabic Sentiment Analyzer
 """
 import os
 import sys
 
-# ✅ إصلاح UTF-8
 if sys.platform == 'win32':
     try:
         sys.stdout.reconfigure(encoding='utf-8', errors='replace')
@@ -15,64 +11,47 @@ if sys.platform == 'win32':
     except Exception:
         pass
 
-# ✅ الاستيرادات الصحيحة (لاحظ Request)
+from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from contextlib import asynccontextmanager
 
 from api import __version__
-from api.routers import predict, health
-from api.dependencies import get_predictor
+from api.routers import health, predict, models
+from api.model_manager import get_model_manager, AVAILABLE_MODELS, DEFAULT_MODEL
 
 
-# ============================================================
-# Lifespan
-# ============================================================
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """تحميل النموذج عند بدء الخادم."""
+    """بدء وإيقاف التطبيق."""
     print("=" * 60)
-    print(f"  Arabic Sentiment Analyzer API v{__version__}")
+    print("Arabic Sentiment Analyzer API v" + __version__)
     print("=" * 60)
-    print("\n[Startup] Loading model...")
+
+    manager = get_model_manager()
+    print("[Startup] Loading default model: " + DEFAULT_MODEL)
 
     try:
-        predictor = get_predictor()
-        print(f"[Startup] [OK] Model loaded: {type(predictor.model).__name__}")
+        loaded = manager.load_model(DEFAULT_MODEL)
+        print("[Startup] OK: " + loaded['full_name'])
     except Exception as e:
-        print(f"[Startup] [WARN] Model loading failed: {e}")
-        print("[Startup] API will start but /predict will fail")
+        print("[Startup] WARN: " + str(e))
 
-    print("[Startup] Ready to serve requests\n")
+    print("[Startup] Docs: http://localhost:8000/docs")
+    print("[Startup] Ready")
     yield
-    print("\n[Shutdown] Closing API...")
+    print("[Shutdown] Stopping...")
 
 
-# ============================================================
-# FastAPI App
-# ============================================================
 app = FastAPI(
     title="Arabic Sentiment Analyzer API",
-    description=(
-        "## تحليل مشاعر النصوص العربية\n\n"
-        "API احترافي باستخدام **TF-IDF + Machine Learning**.\n\n"
-        "### الفئات:\n"
-        "- `negative` — سلبي\n"
-        "- `neutral` — محايد\n"
-        "- `positive` — إيجابي\n"
-    ),
+    description="نظام تحليل مشاعر النصوص العربية - Multi-Model API",
     version=__version__,
     lifespan=lifespan,
     docs_url="/docs",
     redoc_url="/redoc",
-    openapi_url="/openapi.json",
 )
 
-
-# ============================================================
-# CORS
-# ============================================================
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -82,52 +61,41 @@ app.add_middleware(
 )
 
 
-# ============================================================
-# Exception Handlers — لاحظ Request كأول معامل
-# ============================================================
 @app.exception_handler(FileNotFoundError)
 async def file_not_found_handler(request: Request, exc: FileNotFoundError):
-    """معالج خطأ النموذج المفقود."""
     return JSONResponse(
         status_code=503,
-        content={
-            "error": "Model not available",
-            "detail": str(exc),
-            "status_code": 503
-        }
+        content={"error": "Model not available", "detail": str(exc)},
     )
 
 
-@app.exception_handler(ValueError)
-async def value_error_handler(request: Request, exc: ValueError):
-    """معالج خطأ القيم."""
-    return JSONResponse(
-        status_code=400,
-        content={
-            "error": "Invalid input",
-            "detail": str(exc),
-            "status_code": 400
-        }
-    )
-
-
-# ============================================================
-# Routers
-# ============================================================
 app.include_router(health.router)
 app.include_router(predict.router)
+app.include_router(models.router)
 
 
-# ============================================================
-# Main
-# ============================================================
+@app.get("/", tags=["Root"])
+async def root():
+    manager = get_model_manager()
+    return {
+        "name": "Arabic Sentiment Analyzer API",
+        "version": __version__,
+        "default_model": DEFAULT_MODEL,
+        "loaded_models": manager.get_loaded_models(),
+        "endpoints": {
+            "docs": "/docs",
+            "health": "/health",
+            "metrics": "/metrics",
+            "models": "/models",
+            "predict": "POST /predict",
+            "predict_model": "POST /predict/{model_name}",
+            "batch": "POST /predict/batch",
+        },
+        "labels": ["negative", "neutral", "positive"],
+        "available_models": list(AVAILABLE_MODELS.keys()),
+    }
+
+
 if __name__ == "__main__":
     import uvicorn
-
-    uvicorn.run(
-        "api.main:app",
-        host="0.0.0.0",
-        port=8000,
-        reload=True,
-        log_level="info"
-    )
+    uvicorn.run("api.main:app", host="0.0.0.0", port=8000, reload=True)
